@@ -8,16 +8,16 @@
     <!-- 1. Tailwind CSS for Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Import Map: FIXED with ?external=react to prevent Duplicate React Error -->
+    <!-- 2. Import Map -->
     <script type="importmap">
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?external=react",
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-        "firebase/analytics": "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js",
+        "firebase/analytics": "https://www.gstatic.com/firebasejs/10.13.0/firebase-analytics.js",
         "lucide-react": "https://esm.sh/lucide-react@0.454.0?external=react"
       }
     }
@@ -67,13 +67,12 @@
         } from 'firebase/firestore';
         import { 
             Sparkles, BarChart3, LogOut, LogIn, Lock, ChevronRight, 
-            XCircle, Trophy, History, Lightbulb, BrainCircuit, UserPen, 
-            Check, Loader2, HelpCircle, Pen 
+            XCircle, Trophy, History, Lightbulb, BrainCircuit, Pen, 
+            Check, Loader2, HelpCircle, AlertTriangle, WifiOff,
+            Bot, Infinity as InfinityIcon, Play
         } from 'lucide-react';
 
-        // --------------------------------------------------------------
-        // --- CONFIGURATION SECTION ---
-        // --------------------------------------------------------------
+        // --- CONFIGURATION (PASTE YOUR KEYS HERE) ---
         const firebaseConfig = {
           apiKey: "AIzaSyBPu_ktank8vwwkd1cGbOIi8xSX26VnDDc",
           authDomain: "thecypher-93ced.firebaseapp.com",
@@ -86,123 +85,48 @@
 
         const appId = 'cypher-game-v1'; 
         let app, auth, db, analytics;
+        let isFirebaseInitialized = false;
         
         try {
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
-            analytics = getAnalytics(app);
-        } catch (e) {
-            console.error("Firebase Error:", e);
-        }
+            try { analytics = getAnalytics(app); } catch (e) {}
+            isFirebaseInitialized = true;
+        } catch (e) { console.error("Firebase Init Error:", e); }
 
-        // --- PUZZLE DATABASE ---
+        // --- GEMINI API ---
+        const callGemini = async (prompt, apiKey) => {
+            if (!apiKey) throw new Error("No API Key");
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const delays = [1000, 2000];
+            for (let i = 0; i <= delays.length; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    if (!response.ok) throw new Error(`API Error`);
+                    const data = await response.json();
+                    return data.candidates[0].content.parts[0].text;
+                } catch (err) {
+                    if (i === delays.length) throw err;
+                    await new Promise(r => setTimeout(r, delays[i]));
+                }
+            }
+        };
+
+        // --- PUZZLE DATA ---
         const RAW_PUZZLES = [
             { c: "Movie", e: ["🚢", "🧊", "🎻", "💔", "🌊"], a: "Titanic", x: ["Unsinkable Ship", "The Iceberg", "The Band played on", "Heartbreak", "The Ocean"] },
             { c: "Song", e: ["🌧️", "🔥", "🇬🇧", "🎤", "🎹"], a: "Set Fire to the Rain", x: ["Rain", "Fire", "Adele is British", "Vocal Microphone", "Piano Ballad"] },
             { c: "Book", e: ["⚡", "👓", "🧙‍♂️", "🏰", "🦉"], a: "Harry Potter", x: ["Lightning Scar", "Round Glasses", "The Wizard", "Hogwarts Castle", "Hedwig"] },
-            { c: "Person", e: ["🍎", "🔭", "📉", "🇬🇧", "👴"], a: "Isaac Newton", x: ["Falling Apple", "Telescope", "Physics/Gravity", "British", "Wig"] },
-            { c: "Idiom", e: ["🐈", "👜", "🚫", "🤫", "🗣️"], a: "Let the cat out of the bag", x: ["The Cat", "The Bag", "Don't do it", "Secret", "Spoken"] },
-            { c: "Movie", e: ["🦖", "🌴", "🚙", "🥚", "🧬"], a: "Jurassic Park", x: ["T-Rex", "The Island", "Jeep Chase", "Dino Egg", "DNA"] },
-            { c: "Movie", e: ["🦁", "👑", "🐗", "🌅", "🐵"], a: "The Lion King", x: ["Simba", "King", "Pumbaa", "Sunrise", "Rafiki"] },
-            { c: "Movie", e: ["👽", "🚲", "🌕", "👉", "👈"], a: "E.T.", x: ["Alien", "Flying Bike", "Moon Silhouette", "Touch", "Connect"] },
-            { c: "Movie", e: ["🍫", "🎫", "🏭", "🎩", "🍭"], a: "Charlie and the Chocolate Factory", x: ["Chocolate", "Golden Ticket", "Factory", "Wonka's Hat", "Candy"] },
-            { c: "Movie", e: ["🕷️", "🔴", "🕸️", "🏙️", "🏫"], a: "Spider-Man", x: ["Spider", "Red Suit", "Webs", "New York", "High School"] },
-            { c: "Movie", e: ["👻", "🚫", "🚒", "🤢", "🗽"], a: "Ghostbusters", x: ["Ghost", "No Ghosts Sign", "Ecto-1", "Slime", "NY Setting"] },
-            { c: "Movie", e: ["🦈", "🏖️", "🩸", "⛵", "👮‍♂️"], a: "Jaws", x: ["Shark", "Beach", "Attack", "The Boat", "Chief Brody"] },
-            { c: "Movie", e: ["🐼", "🥋", "🎋", "👊", "🥟"], a: "Kung Fu Panda", x: ["Po", "Martial Arts", "Bamboo", "Fighting", "Dumplings"] },
-            { c: "Movie", e: ["🤠", "🚀", "🧸", "🐍", "👢"], a: "Toy Story", x: ["Woody", "Buzz", "Toys", "Snake in my boot", "Cowboy boot"] },
-            { c: "Movie", e: ["💊", "🕶️", "🐇", "💻", "🔫"], a: "The Matrix", x: ["Red/Blue Pill", "Sunglasses", "White Rabbit", "Coding", "Action"] },
-            { c: "Movie", e: ["🧙‍♀️", "🌪️", "🦁", "🤖", "👠"], a: "The Wizard of Oz", x: ["Witch", "Tornado", "Lion", "Tin Man", "Ruby Slippers"] },
-            { c: "Movie", e: ["❄️", "👸", "☃️", "🦌", "🎶"], a: "Frozen", x: ["Ice", "Elsa", "Olaf", "Sven", "Let it Go"] },
-            { c: "Movie", e: ["🥊", "🐅", "👁️", "🏃‍♂️", "🇺🇸"], a: "Rocky", x: ["Boxing", "Eye of the Tiger", "Eye", "Training Run", "USA Shorts"] },
-            { c: "Movie", e: ["🎈", "🏠", "👴", "👦", "🐕"], a: "Up", x: ["Balloons", "Flying House", "Carl", "Russell", "Dug"] },
-            { c: "Movie", e: ["🐀", "👨‍🍳", "🇫🇷", "🍲", "🎩"], a: "Ratatouille", x: ["Remy", "Chef", "France", "Soup/Stew", "Chef Hat"] },
-            { c: "Movie", e: ["👽", "🕴️", "🕴️", "🕶️", "🔫"], a: "Men in Black", x: ["Aliens", "Agent J", "Agent K", "Sunglasses", "Laser Gun"] },
-            { c: "Movie", e: ["🚗", "⚡", "🕰️", "🛹", "👨‍🔬"], a: "Back to the Future", x: ["DeLorean", "1.21 Gigawatts", "Time Travel", "Hoverboard", "Doc Brown"] },
-            { c: "Movie", e: ["👹", "🫏", "🏰", "👸", "🐉"], a: "Shrek", x: ["Ogre", "Donkey", "Farquaad's Castle", "Fiona", "Dragon"] },
-            { c: "Movie", e: ["⚔️", "🛡️", "😠", "🏟️", "👎"], a: "Gladiator", x: ["Sword", "Shield", "Maximus", "Colosseum", "Thumbs Down"] },
-            { c: "Movie", e: ["🚢", "🏴‍☠️", "🐙", "🦜", "💰"], a: "Pirates of the Caribbean", x: ["Ship", "Pirate Flag", "Kraken", "Parrot", "Treasure"] },
-            { c: "Movie", e: ["🪐", "⚔️", "👸", "🤖", "👿"], a: "Star Wars", x: ["Space", "Lightsaber", "Leia", "Droids", "Darth Vader"] },
-            { c: "Movie", e: ["💍", "🌋", "👣", "👁️", "🧙‍♂️"], a: "Lord of the Rings", x: ["The Ring", "Mordor", "The Journey", "Sauron", "Gandalf"] },
-            { c: "Movie", e: ["🤵", "🔫", "🍸", "🇬🇧", "🏎️"], a: "James Bond", x: ["Tuxedo", "Gun", "Martini", "British", "Aston Martin"] },
-            { c: "Movie", e: ["🍫", "🏃‍♂️", "🦐", "🏓", "🚌"], a: "Forrest Gump", x: ["Box of Chocolates", "Running", "Shrimping", "Ping Pong", "Bus Stop"] },
-            { c: "Movie", e: ["🤡", "🎈", "🧒", "⛵", "😱"], a: "It", x: ["Pennywise", "Red Balloon", "Georgie", "Paper Boat", "Horror"] },
-            { c: "Movie", e: ["👊", "🧼", "🤫", "💣", "🏢"], a: "Fight Club", x: ["Fighting", "Soap", "First Rule", "Project Mayhem", "Skyscrapers"] },
-            { c: "Movie", e: ["🌪️", "🐄", "🚙", "🌪️", "🎥"], a: "Twister", x: ["Tornado", "Flying Cow", "Storm Chasers", "F5", "Sensors"] },
-            { c: "Movie", e: ["🦸‍♂️", "🛡️", "🔨", "🟢", "🇺🇸"], a: "The Avengers", x: ["Heroes", "Captain America", "Thor", "Hulk", "USA"] },
-            { c: "Movie", e: ["🔎", "🐠", "🐢", "🦈", "🦷"], a: "Finding Nemo", x: ["Searching", "Nemo", "Crush", "Bruce", "Darla"] },
-            { c: "Movie", e: ["🎭", "🌹", "🕯️", "🏰", "🕯️"], a: "Beauty and the Beast", x: ["The Curse", "The Rose", "Lumiere", "The Castle", "Be Our Guest"] },
-            { c: "Song", e: ["☂️", "🌂", "⛈️", "💃", "💎"], a: "Umbrella", x: ["Title", "Ella eh eh", "Storm", "Rihanna", "Diamond"] },
-            { c: "Band", e: ["🐞", "💇‍♂️", "🎸", "🇬🇧", "🛣️"], a: "The Beatles", x: ["Beetle", "Haircuts", "Rock", "British", "Abbey Road"] },
-            { c: "Band", e: ["👑", "🎤", "🎸", "🚲", "👨🏻"], a: "Queen", x: ["Royal Name", "Freddie", "Guitar", "Bicycle Race", "Mustache"] },
-            { c: "Song", e: ["👋", "📞", "💔", "🇬🇧", "🎤"], a: "Hello", x: ["Greeting", "Telephone", "Heartbreak", "Adele", "Vocals"] },
-            { c: "Song", e: ["🕺", "🧟‍♂️", "🧤", "🌕", "👻"], a: "Thriller", x: ["Dance", "Zombies", "Glove", "Moon", "Scary"] },
-            { c: "Band", e: ["🌵", "🕶️", "🎸", "🛌", "🌶️"], a: "Red Hot Chili Peppers", x: ["California", "Style", "Funk Rock", "Under the Bridge", "Spicy"] },
-            { c: "Song", e: ["💍", "💃", "🙅‍♀️", "👈", "🎵"], a: "Single Ladies", x: ["Ring", "Dance", "Put a ring on it", "Hand gesture", "Beyonce"] },
-            { c: "Song", e: ["🚀", "👨‍🚀", "🎹", "🇬🇧", "👨‍🎤"], a: "Rocket Man", x: ["Rocket", "Astronaut", "Piano", "Elton John", "Glam Rock"] },
-            { c: "Song", e: ["🕯️", "🌬️", "👩", "👸", "🇬🇧"], a: "Candle in the Wind", x: ["Candle", "Wind", "Marilyn Monroe", "Princess Diana", "Elton John"] },
-            { c: "Song", e: ["👶", "👶", "👶", "🟣", "🎤"], a: "Baby", x: ["Baby", "Baby", "Baby", "Justin Bieber", "Pop Star"] },
-            { c: "Song", e: ["🐺", "🌕", "💃", "🇨🇴", " hips"], a: "She Wolf", x: ["Wolf", "Full Moon", "Dance", "Shakira", "Hips Don't Lie"] },
-            { c: "Band", e: ["🔫", "🌹", "🎩", "🎸", "🇺🇸"], a: "Guns N Roses", x: ["Guns", "Roses", "Slash", "Guitar", "USA"] },
-            { c: "Band", e: ["📻", "👤", "🎸", "🇬🇧", "🎹"], a: "Radiohead", x: ["Radio", "Head", "Alternative", "British", "Thom Yorke"] },
-            { c: "Song", e: ["🐅", "👁️", "🥊", "🏃‍♂️", "🎸"], a: "Eye of the Tiger", x: ["Tiger", "Eye", "Boxing", "Training", "Guitar Riff"] },
-            { c: "Book", e: ["💍", "🌋", "👣", "👁️", "🧙‍♂️"], a: "The Hobbit", x: ["The Ring", "Lonely Mountain", "Bilbo", "Smaug", "Gandalf"] },
-            { c: "Book", e: ["🐋", "⚓", "🌊", "😠", "🦵"], a: "Moby Dick", x: ["The Whale", "Ship", "Ocean", "Captain Ahab", "Peg Leg"] },
-            { c: "Book", e: ["🐖", "🕸️", "🕷️", "🐀", "📝"], a: "Charlotte's Web", x: ["Wilbur", "The Web", "Charlotte", "Templeton", "Some Pig"] },
-            { c: "Book", e: ["👧", "🐇", "🕳️", "🎩", "😸"], a: "Alice in Wonderland", x: ["Alice", "White Rabbit", "Rabbit Hole", "Mad Hatter", "Cheshire Cat"] },
-            { c: "Book", e: ["🧛‍♂️", "🏰", "🦇", "🩸", "🇷🇴"], a: "Dracula", x: ["Vampire", "Castle", "Bat Form", "Blood", "Transylvania"] },
-            { c: "Book", e: ["🏹", "🔥", "👧", "🐦", "🎲"], a: "The Hunger Games", x: ["Bow & Arrow", "Girl on Fire", "Katniss", "Mockingjay", "The Games"] },
-            { c: "Book", e: ["🦁", "🧙‍♀️", "🚪", "❄️", "🌨️"], a: "The Lion, the Witch and the Wardrobe", x: ["Aslan", "White Witch", "Wardrobe", "Winter", "Narnia"] },
-            { c: "Book", e: ["🐷", "👮‍♂️", "🐚", "🏝️", "🔥"], a: "Lord of the Flies", x: ["Piggy", "Ralph", "Conch", "Island", "Signal Fire"] },
-            { c: "Book", e: ["💰", "🎉", "🟢", "🏎️", "🏊‍♂️"], a: "The Great Gatsby", x: ["Wealth", "Parties", "Green Light", "Yellow Car", "Pool"] },
-            { c: "Place", e: ["🗼", "🥐", "🎨", "🍷", "🇫🇷"], a: "Paris", x: ["Eiffel Tower", "Food", "Art", "Wine", "France"] },
-            { c: "Place", e: ["🗽", "🍎", "🚕", "🏙️", "🍕"], a: "New York", x: ["Statue of Liberty", "Big Apple", "Taxis", "Skyline", "Pizza"] },
-            { c: "Place", e: ["🏜️", "🎰", "🃏", "💰", "💒"], a: "Las Vegas", x: ["Desert", "Slots", "Cards", "Money", "Chapels"] },
-            { c: "Place", e: ["🐪", "🔺", "🏜️", "🇪🇬", "⚰️"], a: "Egypt", x: ["Camels", "Pyramids", "Desert", "Country", "Mummies"] },
-            { c: "Place", e: ["🕰️", "🎡", "🌉", "💂", "🌧️"], a: "London", x: ["Big Ben", "London Eye", "Tower Bridge", "Guard", "Rain"] },
-            { c: "Place", e: ["🗻", "🍣", "🚄", "🌸", "🇯🇵"], a: "Japan", x: ["Mt Fuji", "Sushi", "Bullet Train", "Cherry Blossom", "Country"] },
-            { c: "Place", e: ["🍝", "🍕", "🏟️", "🛵", "🇮🇹"], a: "Italy", x: ["Pasta", "Pizza", "Colosseum", "Vespa", "Country"] },
-            { c: "Place", e: ["🦘", "🐨", "🏄‍♂️", "🐚", "🇦🇺"], a: "Australia", x: ["Kangaroo", "Koala", "Surfing", "Opera House", "Country"] },
-            { c: "Place", e: ["🍁", "🏒", "🥞", "🌲", "🇨🇦"], a: "Canada", x: ["Maple Leaf", "Hockey", "Pancakes/Syrup", "Forests", "Country"] },
-            { c: "Place", e: ["🧱", "🐉", "🍜", "🏯", "🇨🇳"], a: "China", x: ["Great Wall", "Dragon", "Noodles", "Temple", "Country"] },
-            { c: "Place", e: ["💃", "🥘", "🐂", "🏖️", "🇪🇸"], a: "Spain", x: ["Flamenco", "Paella", "Bullfighting", "Beaches", "Country"] },
-            { c: "Character", e: ["🦇", "🤵", "🃏", "🌃", "👊"], a: "Batman", x: ["Bat Symbol", "Suit", "Joker", "Gotham", "Punch"] },
-            { c: "Person", e: ["🎨", "👂", "🌻", "🌌", "🇳🇱"], a: "Vincent van Gogh", x: ["Painter", "Cut Ear", "Sunflowers", "Starry Night", "Dutch"] },
-            { c: "Person", e: ["🏀", "🐂", "2️⃣3️⃣", "👟", "🏆"], a: "Michael Jordan", x: ["Basketball", "Bulls", "Jersey Number", "Jordans", "Champion"] },
-            { c: "Character", e: ["🔎", "🎻", "🇬🇧", "🧥", "💊"], a: "Sherlock Holmes", x: ["Magnifying Glass", "Violin", "British", "Coat", "Mystery"] },
-            { c: "Person", e: ["💡", "⚡", "👴", "🪁", "🇺🇸"], a: "Benjamin Franklin", x: ["Lightbulb", "Electricity", "Founding Father", "Kite Experiment", "USA"] },
-            { c: "Person", e: ["🚀", "🌕", "👨‍🚀", "🇺🇸", "👣"], a: "Neil Armstrong", x: ["Rocket", "Moon", "Astronaut", "USA", "First Step"] },
-            { c: "Character", e: ["🍄", "🐢", "👸", "🔧", "🇮🇹"], a: "Mario", x: ["Power up", "Koopa", "Peach", "Plumber", "Italian"] },
-            { c: "Person", e: ["🍏", "📱", "💻", "🐢", "🕶️"], a: "Steve Jobs", x: ["Apple", "iPhone", "Mac", "Turtleneck", "Glasses"] },
-            { c: "Person", e: ["🧠", "👅", "🎻", "🇩🇪", "👴"], a: "Albert Einstein", x: ["Genius", "Tongue Photo", "Violin", "German", "Hair"] },
-            { c: "Person", e: ["🎤", "🕺", "👑", "🧤", "🇺🇸"], a: "Michael Jackson", x: ["Singer", "Moonwalk", "King of Pop", "Glove", "USA"] },
-            { c: "Person", e: ["🎾", "🇨🇭", "🏆", "👔", "🐐"], a: "Roger Federer", x: ["Tennis", "Swiss", "Champion", "Classy", "GOAT"] },
-            { c: "Person", e: ["🎭", "💀", "✒️", "🇬🇧", "👑"], a: "William Shakespeare", x: ["Theater", "Hamlet", "Writer", "British", "Poet"] },
-            { c: "Idiom", e: ["🧊", "❄️", "🍰", "🍒", "🔝"], a: "Icing on the cake", x: ["Icing", "Frosting", "Cake", "Cherry on top", "The best part"] },
-            { c: "Idiom", e: ["🌙", "🔵", "📅", "1️⃣", "🤔"], a: "Once in a blue moon", x: ["Moon", "Blue", "Calendar", "One time", "Rarely"] },
-            { c: "Idiom", e: ["🍎", "🩺", "📅", "🚫", "👨‍⚕️"], a: "An apple a day", x: ["Apple", "Health", "Daily", "Keeps away", "Doctor"] },
-            { c: "Idiom", e: ["💧", "🌉", "🌊", "🔙", "🙅‍♂️"], a: "Water under the bridge", x: ["Water", "Bridge", "Flowing", "Past", "Don't worry"] },
-            { c: "Idiom", e: ["🥚", "🧺", "1️⃣", "🚫", "🔢"], a: "All eggs in one basket", x: ["Eggs", "Basket", "One place", "Don't do it", "Risk"] },
-            { c: "Idiom", e: ["🛌", "🪨", "🔨", "💎", "🏙️"], a: "Between a rock and a hard place", x: ["Stuck", "Rock", "Hard", "Pressure", "Situation"] },
-            { c: "Idiom", e: ["🌧️", "🐱", "🐶", "🏠", "☔"], a: "Raining cats and dogs", x: ["Rain", "Cats", "Dogs", "Outside", "Heavy Rain"] },
-            { c: "Idiom", e: ["👄", "🥈", "🤐", "🥇", "🤫"], a: "Silence is golden", x: ["Speech", "Silver", "Silence", "Gold", "Quiet"] },
-            { c: "Idiom", e: ["🦵", "🤕", "🎭", "🍀", "🤞"], a: "Break a leg", x: ["Leg", "Injury", "Theater/Acting", "Good Luck", "Crossed Fingers"] },
-            { c: "Game", e: ["🧱", "⛏️", "🧟", "⚔️", "🟩"], a: "Minecraft", x: ["Blocks", "Mining", "Mobs", "Crafting", "Creeper"] },
-            { c: "Show", e: ["☕", "🛋️", "⛲", "👫", "🎸"], a: "Friends", x: ["Coffee", "Couch", "Fountain", "The Cast", "Smelly Cat"] },
-            { c: "Show", e: ["🧪", "🚐", "💎", "👨‍🦲", "⚖️"], a: "Breaking Bad", x: ["Chemistry", "RV", "Blue Crystal", "Heisenberg", "Crime"] },
-            { c: "Event", e: ["🛳️", "🧊", "🆘", "🚣", "📉"], a: "Sinking of the Titanic", x: ["Ship", "Iceberg", "Distress", "Lifeboats", "Tragedy"] },
-            { c: "Event", e: ["🦠", "😷", "🏠", "💉", "🌍"], a: "Pandemic", x: ["Virus", "Masks", "Stay Home", "Vaccine", "Global"] },
-            { c: "Game", e: ["♟️", "🏰", "🐎", "👸", "🏁"], a: "Chess", x: ["Pawn", "Rook", "Knight", "Queen", "Checkmate"] },
-            { c: "Brand", e: ["🍎", "📱", "💻", "🎧", "⌚"], a: "Apple", x: ["Logo", "iPhone", "Macbook", "AirPods", "Watch"] },
-            { c: "Brand", e: ["🍔", "🍟", "🤡", "〽️", "🥤"], a: "McDonalds", x: ["Burger", "Fries", "Ronald", "Golden Arches", "Coke"] },
-            { c: "Sport", e: ["⚽", "🌍", "🏆", "🥅", "🦶"], a: "World Cup", x: ["Football", "World", "Trophy", "Goal", "Kick"] },
-            { c: "History", e: ["💂", "👑", "👸", "🇬🇧", "🏰"], a: "British Monarchy", x: ["Guard", "Crown", "Queen", "UK", "Buckingham Palace"] },
             { c: "History", e: ["🧱", "🧱", "🇩🇪", "🔨", "🤝"], a: "Berlin Wall", x: ["Wall", "Wall", "Germany", "Falling", "Reunification"] }
         ];
 
         const getDailyPuzzleIndex = () => {
-            const startDate = new Date("2025-11-20").getTime(); // Start Day
+            const startDate = new Date("2025-11-20").getTime();
             const today = new Date().setHours(0, 0, 0, 0);
             const diffTime = Math.abs(today - startDate);
             const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -210,9 +134,7 @@
         };
 
         const getPuzzleForDay = (dayIndex) => {
-            if (isNaN(dayIndex)) return { id: 0, category: "Loading", emojis: ["❓"], answer: "Error", explanations: [] };
-            const base = RAW_PUZZLES[dayIndex % RAW_PUZZLES.length];
-            if (!base) return { id: 0, category: "Error", emojis: ["❓"], answer: "Error", explanations: [] };
+            const base = RAW_PUZZLES[dayIndex % RAW_PUZZLES.length] || RAW_PUZZLES[0];
             return {
                 id: dayIndex + 1,
                 category: base.c,
@@ -230,11 +152,7 @@
                 case 'Song': return 'from-pink-900 to-slate-900';
                 case 'Book': return 'from-emerald-900 to-slate-900';
                 case 'Place': return 'from-cyan-900 to-slate-900';
-                case 'Person': return 'from-amber-900 to-slate-900';
-                case 'Game': return 'from-green-900 to-slate-900';
-                case 'Brand': return 'from-red-900 to-slate-900';
-                case 'Sport': return 'from-orange-900 to-slate-900';
-                case 'History': return 'from-yellow-900 to-slate-900';
+                case 'AI Generated': return 'from-indigo-900 to-slate-900';
                 default: return 'from-blue-950 to-slate-950';
             }
         };
@@ -244,12 +162,7 @@
                 case 'Movie': return 'text-purple-400 border-purple-500';
                 case 'Song': return 'text-pink-400 border-pink-500';
                 case 'Book': return 'text-emerald-400 border-emerald-500';
-                case 'Place': return 'text-cyan-400 border-cyan-500';
-                case 'Person': return 'text-amber-400 border-amber-500';
-                case 'Game': return 'text-green-400 border-green-500';
-                case 'Brand': return 'text-red-400 border-red-500';
-                case 'Sport': return 'text-orange-400 border-orange-500';
-                case 'History': return 'text-yellow-400 border-yellow-500';
+                case 'AI Generated': return 'text-indigo-400 border-indigo-500';
                 default: return 'text-blue-400 border-blue-500';
             }
         };
@@ -270,9 +183,9 @@
               gain.connect(this.ctx.destination);
               osc.start();
               osc.stop(this.ctx.currentTime + duration);
-            } catch(e) { console.warn("Audio failed", e); }
+            } catch(e) { }
           },
-          playWin() { this.init(); setTimeout(()=>this.playTone(523, 'sine', 0.4),0); setTimeout(()=>this.playTone(659, 'sine', 0.4),100); setTimeout(()=>this.playTone(784, 'sine', 0.4),200); setTimeout(()=>this.playTone(1046, 'triangle', 0.6, 0.2),300); },
+          playWin() { this.init(); setTimeout(()=>this.playTone(523, 'sine', 0.4),0); setTimeout(()=>this.playTone(659, 'sine', 0.4),100); setTimeout(()=>this.playTone(784, 'sine', 0.4),200); },
           playLoss() { this.init(); this.playTone(150, 'square', 0.4, 0.2); setTimeout(()=>this.playTone(100, 'square', 0.6, 0.2),300); },
           playClick() { this.init(); this.playTone(400, 'triangle', 0.05, 0.05); },
           playReveal() { this.init(); this.playTone(800, 'sine', 0.1, 0.1); }
@@ -280,16 +193,22 @@
 
         // --- MAIN COMPONENT ---
         function CypherGame() {
+            // State Declarations
             const [user, setUser] = useState(null);
             const [customUsername, setCustomUsername] = useState(null);
-            const [puzzleIndex, setPuzzleIndex] = useState(0);
-            const [puzzle, setPuzzle] = useState(getPuzzleForDay(0));
-            
+            const [puzzle, setPuzzle] = useState(getPuzzleForDay(getDailyPuzzleIndex()));
+            const [isOfflineMode, setIsOfflineMode] = useState(false);
+            const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini_api_key') || "");
+            const [newUsername, setNewUsername] = useState(""); // Define explicitly
+            const [usernameError, setUsernameError] = useState("");
+            const [isCheckingName, setIsCheckingName] = useState(false);
+
             const [gameState, setGameState] = useState({
                 revealedCount: 1, 
                 status: 'playing', 
                 guesses: [],
-                lastPlayedDate: null
+                lastPlayedDate: null,
+                isInfinite: false
             });
 
             const [stats, setStats] = useState({
@@ -308,53 +227,78 @@
             const [shake, setShake] = useState(false);
             const [activeModal, setActiveModal] = useState(null);
             const [loading, setLoading] = useState(true);
-            const [soundEnabled, setSoundEnabled] = useState(true);
-            
-            // Username State
-            const [newUsername, setNewUsername] = useState("");
-            const [usernameError, setUsernameError] = useState("");
-            const [isCheckingName, setIsCheckingName] = useState(false);
+            const [isAIThinking, setIsAIThinking] = useState(false);
+            const [infiniteTopic, setInfiniteTopic] = useState("");
 
-            // Initialization
+            // --- AI HANDLERS ---
+            const handleAskAIHint = async () => {
+                if (!geminiKey) { setActiveModal('apikey'); return; }
+                setIsAIThinking(true);
+                try {
+                    const visibleEmojis = puzzle.emojis.slice(0, gameState.revealedCount).join(" ");
+                    const prompt = `You are a game master for an emoji guessing game. The answer is "${puzzle.answer}". The category is "${puzzle.category}". The user currently sees these emojis: ${visibleEmojis}. Give a cryptic, single-sentence hint that nudges them towards the answer without using any words from the title.`;
+                    const hint = await callGemini(prompt, geminiKey);
+                    setFeedback(`✨ AI Hint: ${hint}`);
+                } catch (e) { setFeedback("AI Error: Check API Key"); }
+                setIsAIThinking(false);
+            };
+
+            const handleGenerateInfinite = async () => {
+                if (!geminiKey) { setActiveModal('apikey'); return; }
+                if (!infiniteTopic.trim()) return;
+                setLoading(true); setActiveModal(null);
+                try {
+                    const prompt = `Generate a JSON object for an emoji puzzle game about "${infiniteTopic}". Format: { "c": "Category", "e": ["emoji1", "emoji2", "emoji3", "emoji4", "emoji5"], "a": "Title", "x": ["Exp1", "Exp2", "Exp3", "Exp4", "Exp5"] }. Return ONLY JSON.`;
+                    const rawText = await callGemini(prompt, geminiKey);
+                    const data = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+                    setPuzzle({ id: 'AI-' + Date.now(), category: data.c, emojis: data.e, answer: data.a, explanations: data.x });
+                    setGameState({ revealedCount: 1, status: 'playing', guesses: [], lastPlayedDate: null, isInfinite: true });
+                    setFeedback("✨ New Puzzle Generated!");
+                } catch (e) { setFeedback("Failed to generate puzzle."); }
+                setLoading(false);
+            };
+
+            // --- INIT & AUTH ---
             useEffect(() => {
                 const idx = getDailyPuzzleIndex();
-                setPuzzleIndex(idx);
-                setPuzzle(getPuzzleForDay(idx));
+                if (!gameState.isInfinite) setPuzzle(getPuzzleForDay(idx));
                 
                 const initAuth = async () => {
                     try {
-                        await signInAnonymously(auth);
+                        await new Promise(r => setTimeout(r, 500)); 
+                        if (!auth.currentUser && isFirebaseInitialized) await signInAnonymously(auth);
+                        if (!isFirebaseInitialized) throw "Firebase Not Init";
                     } catch (e) {
-                        console.error("Auth failed", e);
+                        setIsOfflineMode(true);
                         setLoading(false);
+                        loadUserData(null, idx);
                     }
                 };
                 initAuth();
 
-                const unsubscribe = onAuthStateChanged(auth, (u) => { 
-                    setUser(u); 
-                    loadUserData(u, idx); 
-                });
-                return () => unsubscribe();
+                if (isFirebaseInitialized) {
+                    const unsubscribe = onAuthStateChanged(auth, (u) => { 
+                        setUser(u); 
+                        if (u) loadUserData(u, idx);
+                        else setLoading(false);
+                    });
+                    return () => unsubscribe();
+                }
             }, []);
 
             useEffect(() => {
-                if (!user) return;
-                const unsubLeaderboard = onSnapshot(
-                  doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global'), 
-                  (doc) => { if (doc.exists()) setLeaderboard(doc.data().topPlayers || []); }
-                );
-                return () => unsubLeaderboard();
+                if (user && isFirebaseInitialized) {
+                    onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global'), 
+                      (doc) => { if (doc.exists()) setLeaderboard(doc.data().topPlayers || []); });
+                }
             }, [user]);
 
-            // Load Data
+            // --- DATA LOGIC ---
             const loadUserData = async (currentUser, currentPuzzleIdx) => {
                 setLoading(true);
                 const todayKey = new Date().setHours(0,0,0,0);
-                let savedState = null;
-                let savedStats = null;
+                let savedState = null, savedStats = null, foundUsername = null;
 
-                // Try LocalStorage
                 try {
                     const localState = localStorage.getItem('cypher_state_v1');
                     const localStats = localStorage.getItem('cypher_stats_v1');
@@ -362,157 +306,141 @@
                     if (localStats) savedStats = JSON.parse(localStats);
                 } catch(e) {}
 
-                // Try Firestore
-                if (currentUser && !currentUser.isAnonymous) {
+                if (currentUser && !isOfflineMode) {
                     try {
                         const docSnap = await getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'data', 'gameData'));
                         if (docSnap.exists()) {
                             const data = docSnap.data();
                             savedStats = data.stats;
-                            if (data.username) setCustomUsername(data.username);
-                            else if (!data.username) setActiveModal('username'); // Force setup if missing
-                            
-                            if (data.gameState && data.gameState.lastPlayedDate === todayKey) savedState = data.gameState;
-                        } else {
-                            setActiveModal('username'); // New user -> force username
+                            foundUsername = data.username;
+                            if (!data.gameState?.isInfinite && data.gameState?.lastPlayedDate === todayKey) savedState = data.gameState;
                         }
-                    } catch (err) { console.error(err); }
+                    } catch (e) {}
                 }
 
-                if (savedState && savedState.lastPlayedDate === todayKey) {
+                if (!foundUsername) foundUsername = localStorage.getItem('cypher_username');
+                if (foundUsername) setCustomUsername(foundUsername);
+                else setActiveModal('username');
+
+                if (savedState && savedState.lastPlayedDate === todayKey && !gameState.isInfinite) {
                     setGameState(savedState);
                     if (savedState.status !== 'playing') fetchPercentile(currentPuzzleIdx, savedState.revealedCount);
-                } else {
-                    setGameState({ revealedCount: 1, status: 'playing', guesses: [], lastPlayedDate: todayKey });
-                }
-
-                if (savedStats) {
-                    if (!savedStats.guessDistribution) savedStats.guessDistribution = { 1:0, 2:0, 3:0, 4:0, 5:0 };
-                    if (!savedStats.history) savedStats.history = {};
-                    setStats(savedStats);
-                }
+                } 
+                if (savedStats) setStats(savedStats);
                 setLoading(false);
             };
 
             const saveUserData = async (newState, newStats) => {
                 try {
-                    localStorage.setItem('cypher_state_v1', JSON.stringify(newState));
+                    if (!newState.isInfinite) localStorage.setItem('cypher_state_v1', JSON.stringify(newState));
                     localStorage.setItem('cypher_stats_v1', JSON.stringify(newStats));
-                    
-                    if (user && !user.isAnonymous) {
+                    if (user && !isOfflineMode) {
                         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameData'), {
                             gameState: newState, stats: newStats, lastUpdated: serverTimestamp()
                         }, { merge: true });
-
-                        if (newStats.currentStreak > 0) updateLeaderboard(user, newStats.currentStreak);
+                        if (newStats.currentStreak > 0 && customUsername && !newState.isInfinite) {
+                            updateLeaderboard(user, newStats.currentStreak, customUsername);
+                        }
                     }
-                } catch (err) { console.error(err); }
-            };
-
-            const updateLeaderboard = async (user, streak, forceName) => {
-                const lbRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global');
-                try {
-                    await runTransaction(db, async (transaction) => {
-                        const lbDoc = await transaction.get(lbRef);
-                        let players = lbDoc.exists() ? lbDoc.data().topPlayers : [];
-                        players = players.filter((p) => p.uid !== user.uid);
-                        
-                        const displayName = forceName || customUsername || user.displayName || `Player ${user.uid.slice(0,4)}`;
-                        players.push({ uid: user.uid, name: displayName, streak: streak, date: Date.now() });
-                        players.sort((a, b) => b.streak - a.streak);
-                        players = players.slice(0, 50);
-                        transaction.set(lbRef, { topPlayers: players }, { merge: true });
-                    });
                 } catch (e) {}
             };
 
-            const updateDailyStats = async (cluesUsed) => {
-                const statsRef = doc(db, 'artifacts', appId, 'public', 'data', `daily_stats_${puzzle.id}`);
-                try {
-                    await runTransaction(db, async (transaction) => {
-                        const docSnap = await transaction.get(statsRef);
-                        const data = docSnap.exists() ? docSnap.data() : { 1:0, 2:0, 3:0, 4:0, 5:0, total: 0 };
-                        data[cluesUsed] = (data[cluesUsed] || 0) + 1;
-                        data.total = (data.total || 0) + 1;
-                        transaction.set(statsRef, data);
-                    });
-                    fetchPercentile(puzzle.id, cluesUsed);
-                } catch (e) {}
+            const updateLeaderboard = async (user, streak, name) => {
+                 if (!isFirebaseInitialized) return;
+                 const lbRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global');
+                 try { await runTransaction(db, async (t) => {
+                    const d = await t.get(lbRef);
+                    let p = d.exists() ? d.data().topPlayers : [];
+                    p = p.filter(x => x.uid !== user.uid);
+                    p.push({ uid: user.uid, name, streak, date: Date.now() });
+                    p.sort((a,b) => b.streak - a.streak);
+                    t.set(lbRef, { topPlayers: p.slice(0,50) }, { merge: true });
+                 }); } catch(e){}
             };
 
-            const fetchPercentile = async (pid, myScore) => {
+            const updateDailyStats = async (clues) => {
+                if (!isFirebaseInitialized || puzzle.id.toString().startsWith('AI')) return;
                 try {
-                    const docSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', `daily_stats_${pid}`));
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        let betterThanMe = 0;
-                        for (let i = myScore + 1; i <= 5; i++) betterThanMe += (data[i] || 0);
-                        const p = Math.round((betterThanMe / data.total) * 100);
-                        setPercentile(Math.max(1, Math.min(99, 100 - p)));
+                    const ref = doc(db, 'artifacts', appId, 'public', 'data', `daily_stats_${puzzle.id}`);
+                    await runTransaction(db, async (t) => {
+                        const d = await t.get(ref);
+                        const v = d.exists() ? d.data() : { 1:0,2:0,3:0,4:0,5:0,total:0 };
+                        v[clues] = (v[clues]||0)+1; v.total = (v.total||0)+1;
+                        t.set(ref, v);
+                    });
+                    fetchPercentile(puzzle.id, clues);
+                } catch(e){}
+            };
+
+            const fetchPercentile = async (pid, score) => {
+                if (!isFirebaseInitialized || pid.toString().startsWith('AI')) return;
+                try {
+                    const d = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', `daily_stats_${pid}`));
+                    if(d.exists()){
+                        const v = d.data();
+                        let better = 0;
+                        for(let i=score+1; i<=5; i++) better += (v[i]||0);
+                        setPercentile(Math.max(1, Math.min(99, Math.round((better/v.total)*100))));
                     }
-                } catch(e) {}
+                } catch(e){}
             };
 
             const handleLogin = async () => {
-                try {
-                    const provider = new GoogleAuthProvider();
-                    await signInWithPopup(auth, provider);
-                } catch (error) { console.error("Login failed", error); }
+                try { await signInWithPopup(auth, new GoogleAuthProvider()); } 
+                catch (e) { alert("Login failed. Check popups."); }
             };
 
             const handleSetUsername = async () => {
-                if (!newUsername.trim() || !user) return;
+                if (!newUsername.trim()) return;
                 const safeName = newUsername.trim().replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
-                if (safeName.length < 3) { setUsernameError("Too short (min 3)"); return; }
-                if (safeName.length > 15) { setUsernameError("Too long (max 15)"); return; }
+                setIsCheckingName(true); setUsernameError("");
 
-                setIsCheckingName(true);
-                setUsernameError("");
+                if (!isFirebaseInitialized || isOfflineMode) {
+                    localStorage.setItem('cypher_username', newUsername.trim());
+                    setCustomUsername(newUsername.trim());
+                    setActiveModal('stats');
+                    setIsCheckingName(false);
+                    return;
+                }
 
                 try {
-                    const nameDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'taken_usernames', safeName);
-                    const nameDoc = await getDoc(nameDocRef);
-                    if (nameDoc.exists()) {
-                        setUsernameError("Taken.");
-                        setIsCheckingName(false);
-                        return;
+                    const nameRef = doc(db, 'artifacts', appId, 'public', 'data', 'taken_usernames', safeName);
+                    const nameDoc = await getDoc(nameRef);
+                    if (nameDoc.exists() && nameDoc.data().uid !== user.uid) {
+                        setUsernameError("Taken."); setIsCheckingName(false); return;
                     }
-
-                    await runTransaction(db, async (transaction) => {
-                        const check = await transaction.get(nameDocRef);
-                        if (check.exists()) throw "Taken";
-                        transaction.set(nameDocRef, { uid: user.uid, date: Date.now() });
-                        const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameData');
-                        transaction.set(userRef, { username: newUsername.trim() }, { merge: true });
+                    await runTransaction(db, async (t) => {
+                        const check = await t.get(nameRef);
+                        if (check.exists() && check.data().uid !== user.uid) throw "Taken";
+                        t.set(nameRef, { uid: user.uid });
+                        t.set(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameData'), { username: newUsername.trim() }, { merge: true });
                     });
-
                     setCustomUsername(newUsername.trim());
                     updateLeaderboard(user, stats.currentStreak, newUsername.trim());
                     setActiveModal('stats');
-                } catch (e) {
-                    setUsernameError(e === "Taken" ? "Just taken!" : "Error.");
-                }
+                } catch (e) { setUsernameError("Error or Taken."); }
                 setIsCheckingName(false);
             };
 
             const handleGuess = (e) => {
                 e.preventDefault();
                 if (gameState.status !== 'playing' || !inputValue.trim()) return;
-                if (soundEnabled) AudioEngine.playClick();
+                AudioEngine.playClick();
                 const guess = inputValue.trim();
                 
                 if (normalize(guess) === normalize(puzzle.answer)) {
-                    if (soundEnabled) AudioEngine.playWin();
+                    AudioEngine.playWin();
                     const finalState = { ...gameState, status: 'won', revealedCount: 5, guesses: [...gameState.guesses, guess] };
-                    const newStats = { 
-                        ...stats, 
-                        gamesPlayed: stats.gamesPlayed + 1,
-                        currentStreak: stats.currentStreak + 1,
-                        maxStreak: Math.max(stats.currentStreak + 1, stats.maxStreak),
-                        winRate: Math.round(((stats.currentStreak + 1) / (stats.gamesPlayed + 1)) * 100),
-                        guessDistribution: { ...stats.guessDistribution, [gameState.revealedCount]: stats.guessDistribution[gameState.revealedCount] + 1 },
-                        history: { ...stats.history, [puzzle.id]: { result: 'won', guesses: gameState.revealedCount, date: Date.now() } }
-                    };
+                    const isDaily = !gameState.isInfinite;
+                    const newStats = { ...stats };
+                    if (isDaily) {
+                        newStats.gamesPlayed++;
+                        newStats.currentStreak++;
+                        newStats.maxStreak = Math.max(newStats.currentStreak, newStats.maxStreak);
+                        newStats.winRate = Math.round((newStats.currentStreak / newStats.gamesPlayed) * 100);
+                        newStats.guessDistribution[gameState.revealedCount]++;
+                        newStats.history[puzzle.id] = { result: 'won', guesses: gameState.revealedCount, date: Date.now() };
+                    }
                     setGameState(finalState);
                     setStats(newStats);
                     saveUserData(finalState, newStats);
@@ -523,22 +451,22 @@
                     setShake(true);
                     setTimeout(() => setShake(false), 500);
                     if (gameState.revealedCount >= 5) {
-                        if (soundEnabled) AudioEngine.playLoss();
-                        const lostState = { ...gameState, status: 'lost', guesses: [...gameState.guesses, guess] };
-                        const newStats = {
-                            ...stats,
-                            gamesPlayed: stats.gamesPlayed + 1,
-                            currentStreak: 0,
-                            winRate: Math.round((0 / (stats.gamesPlayed + 1)) * 100),
-                            history: { ...stats.history, [puzzle.id]: { result: 'lost', guesses: 6, date: Date.now() } }
-                        };
-                        setGameState(lostState);
+                        AudioEngine.playLoss();
+                        const finalState = { ...gameState, status: 'lost', guesses: [...gameState.guesses, guess] };
+                        const newStats = { ...stats };
+                        if (!gameState.isInfinite) {
+                             newStats.gamesPlayed++;
+                             newStats.currentStreak = 0;
+                             newStats.winRate = Math.round((0 / newStats.gamesPlayed) * 100);
+                             newStats.history[puzzle.id] = { result: 'lost', guesses: 6, date: Date.now() };
+                        }
+                        setGameState(finalState);
                         setStats(newStats);
-                        saveUserData(lostState, newStats);
+                        saveUserData(finalState, newStats);
                         setFeedback("Game Over!");
                         setTimeout(() => setActiveModal('stats'), 2000);
                     } else {
-                        if (soundEnabled) AudioEngine.playLoss();
+                        AudioEngine.playLoss();
                         const nextState = { ...gameState, revealedCount: gameState.revealedCount + 1, guesses: [...gameState.guesses, guess] };
                         setGameState(nextState);
                         saveUserData(nextState, stats);
@@ -550,251 +478,168 @@
 
             const themeGradient = getTheme(puzzle.category);
             const accentColor = getAccentColor(puzzle.category);
-            const maxDistribution = Math.max(1, ...Object.values(stats.guessDistribution));
 
-            if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white gap-3"><Sparkles className="w-6 h-6 animate-spin text-purple-500" /> <span className="text-sm font-mono tracking-widest">INITIALIZING...</span></div>;
+            if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white"><Sparkles className="w-6 h-6 animate-spin text-indigo-500" /></div>;
 
             return (
                 <div className={`min-h-screen bg-gradient-to-br ${themeGradient} text-slate-100 font-sans flex flex-col relative transition-colors duration-1000 overflow-hidden`}>
                   
-                  <div className="absolute inset-0 pointer-events-none">
-                    {[...Array(15)].map((_, i) => (
-                       <div key={i} className="absolute rounded-full mix-blend-screen opacity-10 animate-float"
-                         style={{
-                           width: Math.random() * 200 + 50 + 'px', height: Math.random() * 200 + 50 + 'px',
-                           left: Math.random() * 100 + '%', top: Math.random() * 100 + '%',
-                           background: `radial-gradient(circle, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 70%)`,
-                           animationDuration: Math.random() * 20 + 10 + 's', animationDelay: Math.random() * -10 + 's'
-                         }} />
-                    ))}
-                  </div>
-
-                  <header className="w-full max-w-md mx-auto p-4 flex justify-between items-center z-20 backdrop-blur-sm bg-slate-950/20 sticky top-0">
+                  {/* Header */}
+                  <header className="w-full max-w-md mx-auto p-4 flex justify-between items-center z-20">
                     <div className="flex items-center gap-2">
-                       <div className={`p-2 rounded-xl shadow-lg border border-white/10 bg-white/5 backdrop-blur-md`}>
+                       <div className={`p-2 rounded-xl bg-white/5 backdrop-blur-md border border-white/10`}>
                          <BrainCircuit className={`w-5 h-5 ${accentColor.split(' ')[0]}`} />
                        </div>
-                       <h1 className="text-2xl font-black tracking-tighter text-white">Cypher</h1>
+                       <h1 className="text-2xl font-black tracking-tighter">Cypher</h1>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => setActiveModal('history')} className="p-2 rounded-full hover:bg-white/10"><History className="w-5 h-5 text-slate-300" /></button>
                       <button onClick={() => setActiveModal('leaderboard')} className="p-2 rounded-full hover:bg-white/10"><Trophy className="w-5 h-5 text-yellow-400" /></button>
                       <button onClick={() => setActiveModal('stats')} className="p-2 rounded-full hover:bg-white/10"><BarChart3 className="w-5 h-5 text-slate-300" /></button>
-                      {!user || user.isAnonymous ? (
-                         <button onClick={handleLogin} className="p-2 rounded-full hover:bg-white/10 text-blue-300"><LogIn className="w-5 h-5" /></button>
-                      ) : (
-                        <button onClick={() => signOut(auth)} className="p-2 rounded-full hover:bg-white/10 text-red-300"><LogOut className="w-5 h-5" /></button>
-                      )}
                     </div>
                   </header>
 
                   <main className="flex-1 w-full max-w-md mx-auto p-4 flex flex-col items-center justify-center relative z-10">
-                    <div className="text-center mb-8 animate-in slide-in-from-top-4 duration-700">
+                    {/* Infinite Mode Indicator */}
+                    {gameState.isInfinite && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-indigo-500/20 border border-indigo-500/50 text-indigo-200 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1"><InfinityIcon className="w-3 h-3"/> Infinite Mode</div>}
+
+                    <div className="text-center mb-8">
                       <p className={`text-xs font-bold tracking-[0.2em] uppercase mb-2 opacity-80 ${accentColor.split(' ')[0]}`}>
-                        {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        {gameState.isInfinite ? 'AI Generated' : new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
                       </p>
-                      <h2 className="text-5xl font-light text-white tracking-tight drop-shadow-lg">{puzzle.category}</h2>
+                      <h2 className="text-5xl font-light tracking-tight drop-shadow-lg">{puzzle.category}</h2>
                     </div>
 
-                    <div className="w-full flex justify-center gap-2 sm:gap-4 mb-10 perspective-1000">
+                    {/* Cards */}
+                    <div className="w-full flex justify-center gap-2 sm:gap-4 mb-8 perspective-1000">
                       {puzzle.emojis.map((emoji, idx) => {
                         const isRevealed = idx < gameState.revealedCount || gameState.status !== 'playing';
                         return (
-                          <div key={idx} className={`relative w-14 h-20 md:w-16 md:h-24 transition-all duration-500`} style={{ perspective: '1000px' }}>
+                          <div key={idx} className="relative w-14 h-20 md:w-16 md:h-24 transition-all duration-500">
                             <div className={`w-full h-full relative transition-transform duration-700 transform-style-3d ${isRevealed ? 'rotate-y-180' : ''}`} style={{ transform: isRevealed ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
-                              <div className={`absolute inset-0 backface-hidden rounded-xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md flex items-center justify-center shadow-lg`}>
-                                <Lock className="w-5 h-5 text-white/50" />
-                              </div>
+                              <div className="absolute inset-0 backface-hidden rounded-xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md flex items-center justify-center"><Lock className="w-5 h-5 text-white/50" /></div>
                               <div className="absolute inset-0 backface-hidden rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-4xl shadow-xl rotate-y-180">{emoji}</div>
                             </div>
                           </div>
                         )
                       })}
                     </div>
-
+                    
+                    {/* Hint & AI Buttons */}
                     {gameState.status === 'playing' && (
-                      <div className="w-full mb-4 text-center">
-                        {gameState.revealedCount < 5 ? (
-                          <button onClick={() => {if(soundEnabled) AudioEngine.playReveal(); setGameState(s => ({...s, revealedCount: s.revealedCount+1})); saveUserData({...gameState, revealedCount: gameState.revealedCount+1}, stats);}} 
-                            className={`text-xs font-bold flex items-center gap-1 mx-auto opacity-60 hover:opacity-100 transition-opacity ${accentColor.split(' ')[0]}`}>
-                            REVEAL NEXT (-PTS) <ChevronRight className="w-3 h-3" />
-                          </button>
-                        ) : <p className="text-xs font-bold text-red-400 animate-pulse">FINAL GUESS!</p>}
+                      <div className="w-full mb-6 flex justify-center gap-4">
+                         {gameState.revealedCount < 5 && (
+                            <button onClick={() => { setGameState(s => ({...s, revealedCount: s.revealedCount+1})); saveUserData({...gameState, revealedCount: gameState.revealedCount+1}, stats); }} 
+                              className={`text-xs font-bold flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity ${accentColor.split(' ')[0]}`}>
+                              REVEAL NEXT <ChevronRight className="w-3 h-3" />
+                            </button>
+                         )}
+                         
+                         <button onClick={handleAskAIHint} disabled={isAIThinking} className="text-xs font-bold flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors">
+                            {isAIThinking ? <Loader2 className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}
+                            {isAIThinking ? "Thinking..." : "AI Hint"}
+                         </button>
                       </div>
                     )}
 
-                    <div className="w-full relative z-20 h-40">
+                    {/* Input Area */}
+                    <div className="w-full relative h-40">
                        {gameState.status === 'playing' ? (
-                         <form onSubmit={handleGuess} className={`relative group transition-transform duration-100 ${shake ? 'translate-x-[-10px]' : ''} mb-12`}>
-                           <div className={`absolute inset-0 bg-gradient-to-r ${getTheme(puzzle.category).replace('900', '500')} rounded-2xl blur opacity-20 group-focus-within:opacity-40 transition-opacity duration-500`}></div>
-                           <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type your guess..." autoFocus
-                             className="w-full relative bg-slate-950/80 border border-white/10 text-white rounded-2xl px-4 py-4 pl-12 focus:outline-none focus:ring-2 focus:ring-white/20 shadow-2xl text-lg" />
-                           <HelpCircle className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                           <button type="submit" disabled={!inputValue} className="absolute right-2 top-2 bottom-2 bg-white text-slate-900 hover:bg-slate-200 px-4 rounded-xl font-bold shadow-lg transition-all">GO</button>
+                         <form onSubmit={handleGuess} className={`relative group transition-transform duration-100 ${shake ? '-translate-x-2' : ''}`}>
+                           <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type guess..." autoFocus
+                             className="w-full bg-slate-950/80 border border-white/10 text-white rounded-2xl px-4 py-4 pl-12 focus:outline-none focus:ring-2 focus:ring-white/20 shadow-2xl text-lg" />
+                           <HelpCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
+                           <button type="submit" disabled={!inputValue} className="absolute right-2 top-2 bottom-2 bg-white text-slate-900 hover:bg-slate-200 px-4 rounded-xl font-bold shadow-lg">GO</button>
                          </form>
                        ) : (
-                         <div className="w-full bg-slate-950/80 backdrop-blur-xl rounded-3xl p-6 border border-white/10 text-center animate-in zoom-in-95 shadow-2xl mb-8">
-                           {gameState.status === 'won' ? (
-                             <div>
-                                <h3 className="text-2xl font-black text-green-400 mb-1">Splendid!</h3>
-                                <p className="text-slate-400 mb-4">Answer: <span className="text-white font-bold">{puzzle.answer}</span></p>
-                                {percentile && <div className="inline-block px-3 py-1 bg-white/10 rounded-full text-xs font-mono text-yellow-400 mb-4">🏆 Top {percentile}% Player</div>}
-                             </div>
-                           ) : (
-                             <div>
-                                <h3 className="text-2xl font-black text-red-400 mb-1">Game Over</h3>
-                                <p className="text-slate-400 mb-4">It was: <span className="text-white font-bold">{puzzle.answer}</span></p>
-                             </div>
-                           )}
-
-                           <div className="border-t border-white/10 pt-6 mt-4 text-left">
-                              <h4 className="flex items-center gap-2 text-sm font-bold text-slate-300 mb-3"><Lightbulb className="w-4 h-4 text-yellow-400"/> The Logic</h4>
-                              <div className="space-y-2">
-                                {puzzle.emojis.map((e, i) => (
-                                  <div key={i} className="flex items-start gap-3 text-xs">
-                                    <span className="text-lg bg-white/5 rounded p-1 leading-none">{e}</span>
-                                    <span className="py-1.5 text-slate-400">{puzzle.explanations[i] || "Related clue"}</span>
-                                  </div>
-                                ))}
-                              </div>
+                         <div className="w-full bg-slate-950/80 backdrop-blur-xl rounded-3xl p-6 border border-white/10 text-center animate-in zoom-in-95 shadow-2xl">
+                           <h3 className={`text-2xl font-black mb-1 ${gameState.status==='won'?'text-green-400':'text-red-400'}`}>{gameState.status==='won'?'Splendid!':'Game Over'}</h3>
+                           <p className="text-slate-400 mb-4">It was: <span className="text-white font-bold">{puzzle.answer}</span></p>
+                           
+                           {/* Logic Breakdown */}
+                           <div className="border-t border-white/10 pt-4 mt-2 text-left max-h-32 overflow-y-auto custom-scrollbar">
+                              {puzzle.emojis.map((e,i) => (
+                                <div key={i} className="flex items-center gap-3 text-xs mb-1"><span className="text-lg">{e}</span> <span className="text-slate-400">{puzzle.explanations[i]}</span></div>
+                              ))}
                            </div>
                          </div>
                        )}
-                       {gameState.status === 'playing' && <div className={`text-center mt-2 h-6 text-sm font-bold ${feedback.includes("Correct") ? 'text-green-400' : 'text-red-400'}`}>{feedback}</div>}
+                       <div className="text-center mt-2 h-6 text-sm font-bold text-indigo-300">{feedback}</div>
                     </div>
                   </main>
 
+                  {/* --- ALL MODALS --- */}
                   {activeModal && (
-                    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                      <div className="bg-slate-900 border border-white/10 w-full max-w-md rounded-3xl p-6 shadow-2xl relative max-h-[80vh] overflow-y-auto custom-scrollbar">
-                         {activeModal !== 'username' && (
-                            <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-colors">✕</button>
-                         )}
+                    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in">
+                      <div className="bg-slate-900 border border-white/10 w-full max-w-md rounded-3xl p-6 shadow-2xl relative overflow-y-auto max-h-[90vh]">
+                         {activeModal !== 'username' && <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full">✕</button>}
                          
                          {activeModal === 'stats' && (
                            <>
                              <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-2xl font-bold text-white flex items-center gap-2"><BarChart3 className="w-6 h-6 text-purple-400"/> Stats</h3>
-                                {user && !user.isAnonymous && (
-                                  <button 
-                                    onClick={() => setActiveModal('username')}
-                                    className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-xs font-mono text-slate-300 transition-colors"
-                                  >
-                                    <Pen className="w-3 h-3" /> {customUsername || "Set Handle"}
-                                  </button>
-                                )}
+                                <h3 className="text-xl font-bold flex gap-2"><BarChart3 className="w-6 h-6 text-purple-400"/> Stats</h3>
+                                <button onClick={() => setActiveModal('username')} className="text-xs bg-white/10 px-3 py-1 rounded-full flex gap-2 items-center hover:bg-white/20"><Pen className="w-3 h-3"/> {customUsername || "Set Name"}</button>
+                             </div>
+                             {/* Stats Grid */}
+                             <div className="grid grid-cols-4 gap-2 mb-6 text-center">
+                               <div><div className="text-xl font-black">{stats.gamesPlayed}</div><div className="text-[10px] text-slate-500">PLAYED</div></div>
+                               <div><div className="text-xl font-black text-green-400">{stats.winRate}%</div><div className="text-[10px] text-slate-500">WIN %</div></div>
+                               <div><div className="text-xl font-black text-blue-400">{stats.currentStreak}</div><div className="text-[10px] text-slate-500">STREAK</div></div>
+                               <div><div className="text-xl font-black text-purple-400">{stats.maxStreak}</div><div className="text-[10px] text-slate-500">MAX</div></div>
+                             </div>
+                             
+                             {/* Infinite Mode Launcher */}
+                             <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-xl mb-6">
+                                <h4 className="text-sm font-bold text-indigo-300 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4"/> Infinite Mode</h4>
+                                <input type="text" value={infiniteTopic} onChange={(e)=>setInfiniteTopic(e.target.value)} placeholder="Enter any topic (e.g. 80s Music)..." className="w-full bg-slate-950/50 border border-indigo-500/30 rounded-lg px-3 py-2 text-sm mb-2"/>
+                                <button onClick={handleGenerateInfinite} disabled={!geminiKey} className="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded-lg font-bold text-sm flex justify-center items-center gap-2 disabled:opacity-50">
+                                  {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Play className="w-4 h-4"/>} Generate Puzzle
+                                </button>
+                                {!geminiKey && <button onClick={()=>setActiveModal('apikey')} className="text-[10px] text-indigo-400 underline mt-2 w-full text-center">Add Gemini Key to Play</button>}
                              </div>
 
-                             <div className="grid grid-cols-2 gap-4 mb-6">
-                               <div className="bg-white/5 p-4 rounded-2xl text-center"><div className="text-2xl font-black text-white">{stats.gamesPlayed}</div><div className="text-[10px] text-slate-400 uppercase">Played</div></div>
-                               <div className="bg-white/5 p-4 rounded-2xl text-center"><div className="text-2xl font-black text-green-400">{stats.winRate}%</div><div className="text-[10px] text-slate-400 uppercase">Win Rate</div></div>
-                               <div className="bg-white/5 p-4 rounded-2xl text-center"><div className="text-2xl font-black text-blue-400">{stats.currentStreak}</div><div className="text-[10px] text-slate-400 uppercase">Streak</div></div>
-                               <div className="bg-white/5 p-4 rounded-2xl text-center"><div className="text-2xl font-black text-purple-400">{stats.maxStreak}</div><div className="text-[10px] text-slate-400 uppercase">Max</div></div>
-                             </div>
-
-                             <div className="space-y-3 mb-6">
-                               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Guess Distribution</h4>
-                               {[1, 2, 3, 4, 5].map((num) => (
-                                 <div key={num} className="flex items-center gap-3 text-xs font-medium">
-                                   <span className="w-3 text-slate-500">{num}</span>
-                                   <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                                     <div className={`h-full rounded-full ${gameState.status === 'won' && gameState.revealedCount === num ? 'bg-purple-500' : 'bg-slate-600'}`}
-                                          style={{ width: `${maxDistribution > 0 ? ((stats.guessDistribution[num]||0) / maxDistribution) * 100 : 0}%` }} />
-                                   </div>
-                                   <span className="w-4 text-right text-slate-300">{stats.guessDistribution[num]||0}</span>
-                                 </div>
-                               ))}
-                             </div>
-
-                             {(!user || user.isAnonymous) && (
-                               <div className="mt-4 pt-6 border-t border-white/10 text-center animate-in slide-in-from-bottom-2">
-                                 <p className="text-sm text-slate-400 mb-4">Sign in to save your stats and choose a unique handle.</p>
-                                 <button 
-                                   onClick={handleLogin}
-                                   className="w-full flex items-center justify-center gap-2 bg-white text-slate-900 py-3 rounded-xl font-bold hover:bg-slate-200 transition-all transform hover:scale-[1.02] shadow-lg"
-                                 >
-                                   <LogIn className="w-5 h-5" /> Sign in with Google
-                                 </button>
-                               </div>
+                             {/* Login CTA */}
+                             {(!user || user.isAnonymous) && !isOfflineMode && (
+                               <button onClick={handleLogin} className="w-full bg-white text-slate-900 py-3 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-slate-200"><LogIn className="w-5 h-5"/> Sign in with Google</button>
                              )}
                            </>
                          )}
 
                          {activeModal === 'username' && (
-                            <div className="text-center animate-in fade-in zoom-in-95 py-4">
-                               <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                 <Pen className="w-6 h-6 text-purple-400" />
-                               </div>
-                               <h3 className="text-xl font-bold text-white mb-2">Claim Your Handle</h3>
-                               <p className="text-sm text-slate-400 mb-6">Choose a unique name for the leaderboard. This will be yours forever.</p>
-                               
-                               <input 
-                                 type="text" 
-                                 value={newUsername}
-                                 onChange={(e) => { setNewUsername(e.target.value); setUsernameError(""); }}
-                                 placeholder="Enter username..."
-                                 className="w-full bg-slate-800/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 mb-2 text-center font-mono"
-                                 maxLength={15}
-                               />
+                            <div className="text-center py-4">
+                               <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4"><Pen className="w-6 h-6 text-purple-400"/></div>
+                               <h3 className="text-xl font-bold mb-2">Claim Handle</h3>
+                               <p className="text-sm text-slate-400 mb-4">Choose a unique name for the leaderboard.</p>
+                               <input type="text" value={newUsername} onChange={(e) => {setNewUsername(e.target.value); setUsernameError("");}} placeholder="Username..." className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-center font-mono mb-2 focus:ring-2 focus:ring-purple-500 outline-none"/>
                                {usernameError && <p className="text-xs text-red-400 mb-4">{usernameError}</p>}
-                               
-                               <button 
-                                 onClick={handleSetUsername}
-                                 disabled={isCheckingName || !newUsername}
-                                 className="w-full bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                               >
-                                 {isCheckingName ? <Loader2 className="w-4 h-4 animate-spin"/> : <Check className="w-4 h-4"/>}
-                                 {isCheckingName ? "Checking..." : "Claim Name"}
+                               <button onClick={handleSetUsername} disabled={isCheckingName || !newUsername} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50">
+                                 {isCheckingName ? <Loader2 className="w-4 h-4 animate-spin"/> : "Claim"}
                                </button>
                             </div>
                          )}
 
-                         {activeModal === 'leaderboard' && (
-                           <>
-                             <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Trophy className="w-6 h-6 text-yellow-400"/> Global Leaders</h3>
-                             <div className="space-y-2">
-                               {leaderboard.length === 0 ? <p className="text-slate-500 text-center">No records yet.</p> : leaderboard.map((p, i) => (
-                                 <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${p.uid === user?.uid ? 'bg-purple-500/20 border border-purple-500/50' : 'bg-white/5'}`}>
-                                   <div className="flex items-center gap-3">
-                                     <span className={`font-black w-6 ${i<3 ? 'text-yellow-400' : 'text-slate-500'}`}>#{i+1}</span>
-                                     <span className="text-sm font-medium text-white truncate max-w-[120px]">{p.name}</span>
-                                   </div>
-                                   <div className="text-xs font-bold text-slate-300">{p.streak} Streak</div>
-                                 </div>
-                               ))}
-                             </div>
-                             {!user || user.isAnonymous && <p className="text-xs text-center mt-4 text-slate-500">Sign in to join the leaderboard.</p>}
-                           </>
+                         {activeModal === 'apikey' && (
+                            <div className="text-center py-4">
+                               <h3 className="text-xl font-bold mb-2">Enable AI Features</h3>
+                               <p className="text-sm text-slate-400 mb-4">Enter your free Google Gemini API Key to unlock Hints and Infinite Mode.</p>
+                               <input type="password" value={geminiKey} onChange={(e)=>setGeminiKey(e.target.value)} placeholder="Paste API Key..." className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 mb-4"/>
+                               <button onClick={() => { localStorage.setItem('gemini_api_key', geminiKey); setActiveModal('stats'); }} className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold">Save Key</button>
+                               <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-slate-500 mt-4 block underline">Get a key here</a>
+                            </div>
                          )}
-
-                         {activeModal === 'history' && (
-                           <>
-                              <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><History className="w-6 h-6 text-blue-400"/> Time Capsule</h3>
-                              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                                {Object.keys(stats.history).length === 0 && <p className="text-slate-500 text-center">Play a game to see history.</p>}
-                                {Object.entries(stats.history).sort((a,b) => Number(b[0])-Number(a[0])).map(([pid, data]: any) => {
-                                  const pIdx = Number(pid) - 1;
-                                  const pData = RAW_PUZZLES[pIdx % RAW_PUZZLES.length];
-                                  if (!pData) return null;
-                                  return (
-                                    <div key={pid} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                                      <div className="flex items-center gap-3">
-                                         <span className="text-xs font-mono text-slate-500">#{pid}</span>
-                                         <span className="text-xl">{pData.e[0]}</span>
-                                         <div>
-                                           <div className="text-sm font-bold text-white">{pData.a}</div>
-                                           <div className="text-[10px] text-slate-400">{new Date(data.date).toLocaleDateString()}</div>
+                         
+                         {activeModal === 'leaderboard' && (
+                             <div>
+                                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Trophy className="w-5 h-5 text-yellow-400"/> Global Leaders</h3>
+                                 <div className="space-y-2">
+                                     {leaderboard.map((p, i) => (
+                                         <div key={i} className={`flex justify-between p-3 rounded-xl ${p.uid===user?.uid?'bg-purple-500/20 border border-purple-500/50':'bg-white/5'}`}>
+                                             <div className="flex gap-3"><span className="text-slate-500 w-6">#{i+1}</span> <span>{p.name}</span></div>
+                                             <div className="font-bold text-slate-300">{p.streak} 🔥</div>
                                          </div>
-                                      </div>
-                                      {data.result === 'won' 
-                                         ? <div className="flex gap-0.5">{[...Array(5)].map((_,i) => <div key={i} className={`w-2 h-2 rounded-full ${i < data.guesses ? 'bg-purple-500' : 'bg-slate-700'}`} />)}</div>
-                                         : <XCircle className="w-5 h-5 text-red-500" />
-                                      }
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                           </>
+                                     ))}
+                                 </div>
+                             </div>
                          )}
 
                       </div>
