@@ -61,9 +61,12 @@
             doc, 
             getDoc, 
             setDoc, 
-            runTransaction, 
+            collection,
             onSnapshot, 
-            serverTimestamp 
+            serverTimestamp,
+            query,
+            orderBy,
+            limit
         } from 'firebase/firestore';
         import { 
             Sparkles, BarChart3, LogOut, LogIn, Lock, ChevronRight, 
@@ -83,7 +86,7 @@
           measurementId: "G-EDZQCR0TB3"
         };
 
-        const appId = 'thecypher-game-v1'; 
+        const appId = 'thecypher-game-v3'; 
         let app, auth, db, analytics;
         let isFirebaseInitialized = false;
         
@@ -117,10 +120,12 @@
             }
         };
 
-        // --- PUZZLE DATABASE (Movies, Songs, Books ONLY) ---
+        // --- PUZZLE DATABASE ---
         const RAW_PUZZLES = [
-            // --- MOVIES ---
             { c: "Movie", e: ["🚢", "🧊", "🎻", "💔", "🌊"], a: "Titanic", x: ["Unsinkable Ship", "The Iceberg", "The Band played on", "Heartbreak", "The Ocean"] },
+            { c: "Song", e: ["🌧️", "🔥", "🇬🇧", "🎤", "🎹"], a: "Set Fire to the Rain", x: ["Rain", "Fire", "Adele is British", "Vocal Microphone", "Piano Ballad"] },
+            { c: "Book", e: ["⚡", "👓", "🧙‍♂️", "🏰", "🦉"], a: "Harry Potter", x: ["Lightning Scar", "Round Glasses", "The Wizard", "Hogwarts Castle", "Hedwig"] },
+            { c: "History", e: ["🧱", "🧱", "🇩🇪", "🔨", "🤝"], a: "Berlin Wall", x: ["Wall", "Wall", "Germany", "Falling", "Reunification"] },
             { c: "Movie", e: ["🦖", "🌴", "🚙", "🥚", "🧬"], a: "Jurassic Park", x: ["T-Rex", "The Island", "Jeep Chase", "Dino Egg", "DNA"] },
             { c: "Movie", e: ["🦁", "👑", "🐗", "🌅", "🐵"], a: "The Lion King", x: ["Simba", "King", "Pumbaa", "Sunrise", "Rafiki"] },
             { c: "Movie", e: ["👽", "🚲", "🌕", "👉", "👈"], a: "E.T.", x: ["Alien", "Flying Bike", "Moon Silhouette", "Touch", "Connect"] },
@@ -151,46 +156,20 @@
             { c: "Movie", e: ["🦸‍♂️", "🛡️", "🔨", "🟢", "🇺🇸"], a: "The Avengers", x: ["Heroes", "Captain America", "Thor", "Hulk", "USA"] },
             { c: "Movie", e: ["🔎", "🐠", "🐢", "🦈", "🦷"], a: "Finding Nemo", x: ["Searching", "Nemo", "Crush", "Bruce", "Darla"] },
             { c: "Movie", e: ["🎭", "🌹", "🕯️", "🏰", "🕯️"], a: "Beauty and the Beast", x: ["The Curse", "The Rose", "Lumiere", "The Castle", "Be Our Guest"] },
-            { c: "Movie", e: ["🤠", "🐎", "🌵", "💰", "🔫"], a: "The Good, the Bad and the Ugly", x: ["Cowboy", "Horse", "Desert", "Gold", "Standoff"] },
-            { c: "Movie", e: ["🌀", "👧", "🐈", "🚪", "🗝️"], a: "Coraline", x: ["Portal", "Coraline", "The Cat", "Little Door", "Key"] },
-            { c: "Movie", e: ["👨‍🚀", "🌽", "🕰️", "🌌", "📚"], a: "Interstellar", x: ["Pilot", "Cornfield", "Time Dilation", "Space", "Bookshelf"] },
-            { c: "Movie", e: ["🦇", "🃏", "🤡", "🏥", "💣"], a: "The Dark Knight", x: ["Batman", "Joker Card", "Joker", "Hospital Explosion", "Chaos"] },
-            { c: "Movie", e: ["👠", "👗", "😈", "📰", "☕"], a: "The Devil Wears Prada", x: ["Heels", "Fashion", "Miranda", "Magazine", "Coffee Run"] },
-            { c: "Movie", e: ["💊", "🐇", "🎩", "🖥️", "🕶️"], a: "The Matrix", x: ["Red/Blue Pill", "White Rabbit", "Morpheus", "Simulation", "Neo"] },
-            { c: "Movie", e: ["🏊‍♂️", "🌊", "🛥️", "🎣", "🦷"], a: "Jaws", x: ["Swimmer", "Ocean", "The Orca", "Hunting", "Teeth"] },
-            { c: "Movie", e: ["🩸", "🛁", "🔪", "🏨", "🚪"], a: "Psycho", x: ["Blood", "Shower", "Knife", "Bates Motel", "Trap Door"] },
-            { c: "Movie", e: ["👧", "🐷", "👻", "🛁", "🐉"], a: "Spirited Away", x: ["Chihiro", "Parents", "No Face", "Bathhouse", "Haku"] },
-            { c: "Movie", e: ["👨‍👩‍👧‍👦", "🏠", "🍑", "👇", "🔦"], a: "Parasite", x: ["Family", "The House", "Peach Allergy", "Basement", "Morse Code"] },
-
-            // --- SONGS ---
-            { c: "Song", e: ["🌧️", "🔥", "🇬🇧", "🎤", "🎹"], a: "Set Fire to the Rain", x: ["Rain", "Fire", "Adele is British", "Vocal Microphone", "Piano Ballad"] },
             { c: "Song", e: ["☂️", "🌂", "⛈️", "💃", "💎"], a: "Umbrella", x: ["Title", "Ella eh eh", "Storm", "Rihanna", "Diamond"] },
+            { c: "Band", e: ["🐞", "💇‍♂️", "🎸", "🇬🇧", "🛣️"], a: "The Beatles", x: ["Beetle", "Haircuts", "Rock", "British", "Abbey Road"] },
+            { c: "Band", e: ["👑", "🎤", "🎸", "🚲", "👨🏻"], a: "Queen", x: ["Royal Name", "Freddie", "Guitar", "Bicycle Race", "Mustache"] },
             { c: "Song", e: ["👋", "📞", "💔", "🇬🇧", "🎤"], a: "Hello", x: ["Greeting", "Telephone", "Heartbreak", "Adele", "Vocals"] },
             { c: "Song", e: ["🕺", "🧟‍♂️", "🧤", "🌕", "👻"], a: "Thriller", x: ["Dance", "Zombies", "Glove", "Moon", "Scary"] },
+            { c: "Band", e: ["🌵", "🕶️", "🎸", "🛌", "🌶️"], a: "Red Hot Chili Peppers", x: ["California", "Style", "Funk Rock", "Under the Bridge", "Spicy"] },
             { c: "Song", e: ["💍", "💃", "🙅‍♀️", "👈", "🎵"], a: "Single Ladies", x: ["Ring", "Dance", "Put a ring on it", "Hand gesture", "Beyonce"] },
             { c: "Song", e: ["🚀", "👨‍🚀", "🎹", "🇬🇧", "👨‍🎤"], a: "Rocket Man", x: ["Rocket", "Astronaut", "Piano", "Elton John", "Glam Rock"] },
             { c: "Song", e: ["🕯️", "🌬️", "👩", "👸", "🇬🇧"], a: "Candle in the Wind", x: ["Candle", "Wind", "Marilyn Monroe", "Princess Diana", "Elton John"] },
             { c: "Song", e: ["👶", "👶", "👶", "🟣", "🎤"], a: "Baby", x: ["Baby", "Baby", "Baby", "Justin Bieber", "Pop Star"] },
             { c: "Song", e: ["🐺", "🌕", "💃", "🇨🇴", " hips"], a: "She Wolf", x: ["Wolf", "Full Moon", "Dance", "Shakira", "Hips Don't Lie"] },
-            { c: "Song", e: ["🐅", "👁️", "🥊", "🏃‍♂️", "🎸"], a: "Eye of the Tiger", x: ["Tiger", "Eye", "Boxing", "Training", "Guitar Riff"] },
-            { c: "Song", e: ["👑", "👸", "🎤", "🍬", "🍭"], a: "California Gurls", x: ["Katy Perry", "Queen", "Pop", "Candy", "Lollipop"] },
-            { c: "Song", e: ["🏰", "❄️", "⛄", "🏔️", "🌬️"], a: "Let It Go", x: ["Kingdom", "Ice", "Snowman", "Mountain", "Wind"] },
-            { c: "Song", e: ["🛣️", "🤠", "🐎", "🎸", "🎤"], a: "Old Town Road", x: ["Road", "Cowboy", "Horse", "Country", "Lil Nas X"] },
-            { c: "Song", e: ["🏊", "👶", "💵", "🎸", "💊"], a: "Smells Like Teen Spirit", x: ["Pool", "Baby cover", "Money", "Grunge", "Nirvana"] },
-            { c: "Song", e: ["🏨", "🦅", "🎸", "🌴", "👻"], a: "Hotel California", x: ["Hotel", "Eagles", "Guitar Solo", "California", "You can never leave"] },
-            { c: "Song", e: ["🚗", "🎤", "👯‍♀️", "🇬🇧", "🌶️"], a: "Wannabe", x: ["Spice Bus", "Singing", "Friends", "Spice Girls", "Zigazig-ah"] },
-            { c: "Song", e: ["👋", " Jude", "🎹", "🇬🇧", "🐞"], a: "Hey Jude", x: ["Greeting", "Title", "Piano", "Beatles", "Beetle"] },
-            { c: "Song", e: ["💃", "👸", "🕺", "🇸🇪", "🎉"], a: "Dancing Queen", x: ["Dance", "Queen", "Disco", "ABBA", "Party"] },
-            { c: "Song", e: ["🌌", "✨", "💎", "🎤", "🎸"], a: "Lucy in the Sky with Diamonds", x: ["Sky", "Sparkle", "Diamond", "Psychadelic", "Beatles"] },
-            { c: "Song", e: ["🟣", "☔", "🎸", "🤴", "🕊️"], a: "Purple Rain", x: ["Purple", "Rain", "Guitar", "Prince", "Doves Cry"] },
-            { c: "Band", e: ["🐞", "💇‍♂️", "🎸", "🇬🇧", "🛣️"], a: "The Beatles", x: ["Beetle", "Haircuts", "Rock", "British", "Abbey Road"] },
-            { c: "Band", e: ["👑", "🎤", "🎸", "🚲", "👨🏻"], a: "Queen", x: ["Royal Name", "Freddie", "Guitar", "Bicycle Race", "Mustache"] },
-            { c: "Band", e: ["🌵", "🕶️", "🎸", "🛌", "🌶️"], a: "Red Hot Chili Peppers", x: ["California", "Style", "Funk Rock", "Under the Bridge", "Spicy"] },
             { c: "Band", e: ["🔫", "🌹", "🎩", "🎸", "🇺🇸"], a: "Guns N Roses", x: ["Guns", "Roses", "Slash", "Guitar", "USA"] },
             { c: "Band", e: ["📻", "👤", "🎸", "🇬🇧", "🎹"], a: "Radiohead", x: ["Radio", "Head", "Alternative", "British", "Thom Yorke"] },
-
-            // --- BOOKS ---
-            { c: "Book", e: ["⚡", "👓", "🧙‍♂️", "🏰", "🦉"], a: "Harry Potter", x: ["Lightning Scar", "Round Glasses", "The Wizard", "Hogwarts Castle", "Hedwig"] },
+            { c: "Song", e: ["🐅", "👁️", "🥊", "🏃‍♂️", "🎸"], a: "Eye of the Tiger", x: ["Tiger", "Eye", "Boxing", "Training", "Guitar Riff"] },
             { c: "Book", e: ["💍", "🌋", "👣", "👁️", "🧙‍♂️"], a: "The Hobbit", x: ["The Ring", "Lonely Mountain", "Bilbo", "Smaug", "Gandalf"] },
             { c: "Book", e: ["🐋", "⚓", "🌊", "😠", "🦵"], a: "Moby Dick", x: ["The Whale", "Ship", "Ocean", "Captain Ahab", "Peg Leg"] },
             { c: "Book", e: ["🐖", "🕸️", "🕷️", "🐀", "📝"], a: "Charlotte's Web", x: ["Wilbur", "The Web", "Charlotte", "Templeton", "Some Pig"] },
@@ -199,21 +178,11 @@
             { c: "Book", e: ["🏹", "🔥", "👧", "🐦", "🎲"], a: "The Hunger Games", x: ["Bow & Arrow", "Girl on Fire", "Katniss", "Mockingjay", "The Games"] },
             { c: "Book", e: ["🦁", "🧙‍♀️", "🚪", "❄️", "🌨️"], a: "The Lion, the Witch and the Wardrobe", x: ["Aslan", "White Witch", "Wardrobe", "Winter", "Narnia"] },
             { c: "Book", e: ["🐷", "👮‍♂️", "🐚", "🏝️", "🔥"], a: "Lord of the Flies", x: ["Piggy", "Ralph", "Conch", "Island", "Signal Fire"] },
-            { c: "Book", e: ["💰", "🎉", "🟢", "🏎️", "🏊‍♂️"], a: "The Great Gatsby", x: ["Wealth", "Parties", "Green Light", "Yellow Car", "Pool"] },
-            { c: "Book", e: ["👁️", "📺", "🐀", "1️⃣", "9️⃣"], a: "1984", x: ["Big Brother", "Telescreen", "Room 101", "Year", "Orwell"] },
-            { c: "Book", e: ["🐦", "⚖️", "👨‍⚖️", "👧", "🇺🇸"], a: "To Kill a Mockingbird", x: ["Mockingbird", "Justice", "Atticus", "Scout", "South"] },
-            { c: "Book", e: ["🥀", "🤴", "🦊", "🪐", "🐍"], a: "The Little Prince", x: ["Rose", "Prince", "Fox", "Planet", "Snake"] },
-            { c: "Book", e: ["🧪", "👨‍⚕️", "👹", "🇬🇧", "🌗"], a: "Dr Jekyll and Mr Hyde", x: ["Potion", "Doctor", "Monster", "London", "Split Personality"] },
-            { c: "Book", e: ["🚂", "🔎", "❄️", "🔪", "🕵️‍♂️"], a: "Murder on the Orient Express", x: ["Train", "Mystery", "Snowed in", "Crime", "Poirot"] },
-            { c: "Book", e: ["🤡", "🎈", "🚲", "🏘️", "😱"], a: "It", x: ["Pennywise", "Red Balloon", "Kids", "Derry", "Horror"] },
-            { c: "Book", e: ["🦕", "🌴", "🦟", "🧬", "🏞️"], a: "Jurassic Park", x: ["Dino", "Park", "Amber Mosquito", "DNA", "Crichton"] },
-            { c: "Book", e: ["🌪️", "👠", "🦁", "🤖", "🌾"], a: "The Wizard of Oz", x: ["Cyclone", "Slippers", "Lion", "Tinman", "Kansas"] },
-            { c: "Book", e: ["🍫", "🏭", "🎫", "👦", "🍭"], a: "Charlie and the Chocolate Factory", x: ["Wonka Bar", "Factory", "Golden Ticket", "Charlie", "Candy"] },
-            { c: "Book", e: ["👨‍🚒", "🔥", "📚", "4️⃣", "5️⃣"], a: "Fahrenheit 451", x: ["Fireman", "Burning", "Books", "Temperature", "Bradbury"] }
+            { c: "Book", e: ["💰", "🎉", "🟢", "🏎️", "🏊‍♂️"], a: "The Great Gatsby", x: ["Wealth", "Parties", "Green Light", "Yellow Car", "Pool"] }
         ];
 
         const getDailyPuzzleIndex = () => {
-            const startDate = new Date("2025-11-20").getTime();
+            const startDate = new Date("2025-11-20").getTime(); // Start Day
             const today = new Date().setHours(0, 0, 0, 0);
             const diffTime = Math.abs(today - startDate);
             const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -279,7 +248,6 @@
 
         // --- MAIN COMPONENT ---
         function CypherGame() {
-            // State Declarations
             const [user, setUser] = useState(null);
             const [customUsername, setCustomUsername] = useState(null);
             const [puzzle, setPuzzle] = useState(getPuzzleForDay(getDailyPuzzleIndex()));
@@ -288,8 +256,16 @@
             const [newUsername, setNewUsername] = useState(""); 
             const [usernameError, setUsernameError] = useState("");
             const [isCheckingName, setIsCheckingName] = useState(false);
-            const [leaderboardLoading, setLeaderboardLoading] = useState(true); // Fix for leaderboard spinner
-            const [leaderboardError, setLeaderboardError] = useState("");
+            
+            const [leaderboard, setLeaderboard] = useState([]);
+            const [percentile, setPercentile] = useState(null);
+            const [inputValue, setInputValue] = useState("");
+            const [feedback, setFeedback] = useState("");
+            const [shake, setShake] = useState(false);
+            const [activeModal, setActiveModal] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [isAIThinking, setIsAIThinking] = useState(false);
+            const [infiniteTopic, setInfiniteTopic] = useState("");
 
             const [gameState, setGameState] = useState({
                 revealedCount: 1, 
@@ -308,23 +284,13 @@
                 history: {}
             });
 
-            const [leaderboard, setLeaderboard] = useState([]);
-            const [percentile, setPercentile] = useState(null);
-            const [inputValue, setInputValue] = useState("");
-            const [feedback, setFeedback] = useState("");
-            const [shake, setShake] = useState(false);
-            const [activeModal, setActiveModal] = useState(null);
-            const [loading, setLoading] = useState(true);
-            const [isAIThinking, setIsAIThinking] = useState(false);
-            const [infiniteTopic, setInfiniteTopic] = useState("");
-
             // --- AI HANDLERS ---
             const handleAskAIHint = async () => {
                 if (!geminiKey) { setActiveModal('apikey'); return; }
                 setIsAIThinking(true);
                 try {
                     const visibleEmojis = puzzle.emojis.slice(0, gameState.revealedCount).join(" ");
-                    const prompt = `You are a game master for an emoji guessing game. The answer is "${puzzle.answer}". The category is "${puzzle.category}". The user currently sees these emojis: ${visibleEmojis}. Give a cryptic, single-sentence hint that nudges them towards the answer without using any words from the title.`;
+                    const prompt = `You are a game master for an emoji guessing game. The answer is "${puzzle.answer}". The category is "${puzzle.category}". The user currently sees these emojis: ${visibleEmojis}. Give a cryptic, single-sentence hint.`;
                     const hint = await callGemini(prompt, geminiKey);
                     setFeedback(`✨ AI Hint: ${hint}`);
                 } catch (e) { setFeedback("AI Error: Check API Key"); }
@@ -376,23 +342,13 @@
 
             useEffect(() => {
                 if (user && isFirebaseInitialized) {
-                    const unsubLeaderboard = onSnapshot(
-                      doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global'), 
-                      (doc) => { 
-                          if (doc.exists()) {
-                              setLeaderboard(doc.data().topPlayers || []);
-                              setLeaderboardLoading(false);
-                          } else {
-                              setLeaderboard([]);
-                              setLeaderboardLoading(false);
-                          }
-                      },
-                      (error) => {
-                          console.error("LB Error:", error);
-                          setLeaderboardError("Could not load leaderboard.");
-                          setLeaderboardLoading(false);
-                      }
-                    );
+                    // Use COLLECTION based leaderboard to avoid hot-spotting
+                    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'), orderBy("streak", "desc"), limit(50));
+                    const unsubLeaderboard = onSnapshot(q, (snapshot) => {
+                         const players = [];
+                         snapshot.forEach(doc => players.push(doc.data()));
+                         setLeaderboard(players);
+                    });
                     return () => unsubLeaderboard();
                 }
             }, [user]);
@@ -417,6 +373,7 @@
                             const data = docSnap.data();
                             savedStats = data.stats;
                             foundUsername = data.username;
+                            // Only load saved game state if it's the DAILY puzzle
                             if (!data.gameState?.isInfinite && data.gameState?.lastPlayedDate === todayKey) savedState = data.gameState;
                         }
                     } catch (e) {}
@@ -438,10 +395,12 @@
                 try {
                     if (!newState.isInfinite) localStorage.setItem('cypher_state_v1', JSON.stringify(newState));
                     localStorage.setItem('cypher_stats_v1', JSON.stringify(newStats));
+                    
                     if (user && !isOfflineMode) {
                         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'gameData'), {
                             gameState: newState, stats: newStats, lastUpdated: serverTimestamp()
                         }, { merge: true });
+
                         if (newStats.currentStreak > 0 && customUsername && !newState.isInfinite) {
                             updateLeaderboard(user, newStats.currentStreak, customUsername);
                         }
@@ -449,17 +408,18 @@
                 } catch (e) {}
             };
 
+            // UPDATED: Use Collection-based write for robust leaderboard
             const updateLeaderboard = async (user, streak, name) => {
                  if (!isFirebaseInitialized) return;
-                 const lbRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', 'global');
-                 try { await runTransaction(db, async (t) => {
-                    const d = await t.get(lbRef);
-                    let p = d.exists() ? d.data().topPlayers : [];
-                    p = p.filter(x => x.uid !== user.uid);
-                    p.push({ uid: user.uid, name, streak, date: Date.now() });
-                    p.sort((a,b) => b.streak - a.streak);
-                    t.set(lbRef, { topPlayers: p.slice(0,50) }, { merge: true });
-                 }); } catch(e){}
+                 const userScoreRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid);
+                 try { 
+                    await setDoc(userScoreRef, {
+                        uid: user.uid,
+                        name: name,
+                        streak: streak,
+                        date: Date.now()
+                    }, { merge: true });
+                 } catch(e){}
             };
 
             const updateDailyStats = async (clues) => {
@@ -756,25 +716,47 @@
                          {activeModal === 'leaderboard' && (
                              <div>
                                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Trophy className="w-5 h-5 text-yellow-400"/> Global Leaders</h3>
-                                 
-                                 {leaderboardLoading ? (
-                                     <div className="flex justify-center items-center h-32">
-                                         <Loader2 className="w-8 h-8 animate-spin text-purple-500"/>
-                                     </div>
-                                 ) : leaderboardError ? (
-                                     <div className="text-center text-red-400 py-8">{leaderboardError}</div>
-                                 ) : (
-                                     <div className="space-y-2">
-                                         {leaderboard.length === 0 && <p className="text-center text-slate-500 py-8">No leaders yet. Be the first!</p>}
-                                         {leaderboard.map((p, i) => (
-                                             <div key={i} className={`flex justify-between p-3 rounded-xl ${p.uid===user?.uid?'bg-purple-500/20 border border-purple-500/50':'bg-white/5'}`}>
-                                                 <div className="flex gap-3"><span className="text-slate-500 w-6">#{i+1}</span> <span>{p.name}</span></div>
-                                                 <div className="font-bold text-slate-300">{p.streak} 🔥</div>
-                                             </div>
-                                         ))}
-                                     </div>
-                                 )}
+                                 <div className="space-y-2">
+                                     {leaderboard.map((p, i) => (
+                                         <div key={i} className={`flex justify-between p-3 rounded-xl ${p.uid===user?.uid?'bg-purple-500/20 border border-purple-500/50':'bg-white/5'}`}>
+                                             <div className="flex gap-3"><span className="text-slate-500 w-6">#{i+1}</span> <span>{p.name}</span></div>
+                                             <div className="font-bold text-slate-300">{p.streak} 🔥</div>
+                                         </div>
+                                     ))}
+                                 </div>
                              </div>
+                         )}
+
+                         {activeModal === 'history' && (
+                           <>
+                              <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><History className="w-6 h-6 text-blue-400"/> Time Capsule</h3>
+                              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                                {Object.keys(stats.history).length === 0 && <p className="text-slate-500 text-center">Play a game to see history.</p>}
+                                {Object.entries(stats.history).sort((a,b) => Number(b[0])-Number(a[0])).map(([pid, data]: any) => {
+                                  const pIdx = Number(pid) - 1;
+                                  // Handle potential history mismatches
+                                  if (pIdx < 0 || pIdx >= RAW_PUZZLES.length) return null;
+                                  const pData = RAW_PUZZLES[pIdx % RAW_PUZZLES.length];
+                                  if (!pData) return null; 
+                                  return (
+                                    <div key={pid} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                                      <div className="flex items-center gap-3">
+                                         <span className="text-xs font-mono text-slate-500">#{pid}</span>
+                                         <span className="text-xl">{pData.e[0]}</span>
+                                         <div>
+                                           <div className="text-sm font-bold text-white">{pData.a}</div>
+                                           <div className="text-[10px] text-slate-400">{new Date(data.date).toLocaleDateString()}</div>
+                                         </div>
+                                      </div>
+                                      {data.result === 'won' 
+                                         ? <div className="flex gap-0.5">{[...Array(5)].map((_,i) => <div key={i} className={`w-2 h-2 rounded-full ${i < data.guesses ? 'bg-purple-500' : 'bg-slate-700'}`} />)}</div>
+                                         : <XCircle className="w-5 h-5 text-red-500" />
+                                      }
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                           </>
                          )}
 
                       </div>
